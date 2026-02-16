@@ -14,6 +14,10 @@ const describeDb = hasDatabaseUrl ? describe : describe.skip
 describeDb("database contract", () => {
   const prisma = new PrismaClient()
 
+  const expectType = (value: string, allowed: string[]) => {
+    expect(allowed).toContain(value)
+  }
+
   beforeAll(async () => {
     await prisma.$queryRaw`SELECT 1`
   })
@@ -33,7 +37,8 @@ describeDb("database contract", () => {
 
     const found = new Map(rows.map((row) => [row.table_name, row.table_type]))
     for (const relation of REQUIRED_RELATIONS) {
-      expect(found.get(relation.name)).toBe(relation.type)
+      const expected = Array.isArray(relation.type) ? relation.type : [relation.type]
+      expect(expected).toContain(found.get(relation.name))
     }
   })
 
@@ -50,6 +55,38 @@ describeDb("database contract", () => {
         expect(columnSet.has(required)).toBe(true)
       }
     }
+  })
+
+  it("enforces core column types on the inventory view", async () => {
+    const rows = await prisma.$queryRaw<
+      {
+        asset_id_type: string
+        score_type: string
+        price_type: string
+        reason_type: string
+        risk_type: string
+        drivers_type: string
+      }[]
+    >(Prisma.sql`
+      SELECT
+        pg_typeof(asset_id)::text AS asset_id_type,
+        pg_typeof(score_0_100)::text AS score_type,
+        pg_typeof(price_aed)::text AS price_type,
+        pg_typeof(reason_codes)::text AS reason_type,
+        pg_typeof(risk_flags)::text AS risk_type,
+        pg_typeof(drivers)::text AS drivers_type
+      FROM agent_inventory_view_v1
+      LIMIT 1
+    `)
+
+    expect(rows.length).toBeGreaterThan(0)
+    const [row] = rows
+    expectType(row.asset_id_type, ["text", "character varying"])
+    expectType(row.score_type, ["smallint", "integer", "bigint", "numeric", "double precision"])
+    expectType(row.price_type, ["double precision"])
+    expectType(row.reason_type, ["text", "text[]", "character varying"])
+    expectType(row.risk_type, ["text", "text[]", "character varying"])
+    expectType(row.drivers_type, ["text", "jsonb", "json"])
   })
 
   it("exposes required functions", async () => {

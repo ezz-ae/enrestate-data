@@ -218,11 +218,11 @@ export function buildOverrideInsertQuery(
   reason: string,
   selectedAssetId: string | null,
 ): Prisma.Sql {
-  const flagsJson = JSON.stringify(overrideFlags)
+  const flagsJson = JSON.stringify({ ...overrideFlags, selected_asset_id: selectedAssetId })
   return Prisma.sql`
     INSERT INTO investor_override_audit
-      (user_id, risk_profile, horizon, override_flags, reason, selected_asset_id, created_at)
+      (session_id, investor_profile, original_horizon, overridden_to, reason, created_at)
     VALUES
-      (${userId}, ${riskProfile}, ${horizon}, ${flagsJson}::jsonb, ${reason}, ${selectedAssetId}, NOW())
+      (${userId}, ${riskProfile}, ${horizon}, ${flagsJson}, ${reason}, NOW())
   `
 }

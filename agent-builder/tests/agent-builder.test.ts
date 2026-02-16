@@ -44,6 +44,12 @@ describe("Agent builder scaffolding", () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
+      connectors: {
+        listings: false,
+        projects: false,
+        marketIntel: false,
+        crm: false,
+      },
     }
 
     const run = await executeAgentRun(definition, {

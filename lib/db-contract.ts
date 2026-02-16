@@ -2,14 +2,14 @@ export type RelationType = "VIEW" | "BASE TABLE"
 
 export type RelationContract = {
   name: string
-  type: RelationType
+  type: RelationType | RelationType[]
   requiredColumns: string[]
 }
 
 export const REQUIRED_RELATIONS: RelationContract[] = [
   {
     name: "agent_inventory_view_v1",
-    type: "VIEW",
+    type: ["VIEW", "BASE TABLE"],
     requiredColumns: [
       "asset_id",
       "name",
@@ -50,12 +50,11 @@ export const REQUIRED_RELATIONS: RelationContract[] = [
     name: "investor_override_audit",
     type: "BASE TABLE",
     requiredColumns: [
-      "user_id",
-      "risk_profile",
-      "horizon",
-      "override_flags",
+      "session_id",
+      "investor_profile",
+      "original_horizon",
+      "overridden_to",
       "reason",
-      "selected_asset_id",
       "created_at",
     ],
   },
