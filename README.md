@@ -37,12 +37,14 @@ NEON_AUTH_BASE_URL=https://your-neon-auth-url.neon.tech
 NEON_AUTH_COOKIE_SECRET=your-secret-at-least-32-characters-long
 NEON_AUTH_ADMIN_EMAILS=admin@entrestate.com,ops@entrestate.com
 NEXT_PUBLIC_ADMIN_MODE=false
+NEXT_PUBLIC_ENABLE_AGENT_BUILDER=false
 ```
 
 - `DATABASE_URL` and `DATABASE_URL_UNPOOLED` are required for Neon-backed features.
 - `NEON_AUTH_BASE_URL` and `NEON_AUTH_COOKIE_SECRET` enable Neon Auth session handling.
 - `NEON_AUTH_ADMIN_EMAILS` is optional for server-side admin gating.
-- `NEXT_PUBLIC_ADMIN_MODE=true` enables override controls on Market Score and Agent Runtime.
+- `NEXT_PUBLIC_ADMIN_MODE=true` enables override controls on Market Score and Agent Runtime (non-production only).
+- `NEXT_PUBLIC_ENABLE_AGENT_BUILDER=true` enables Agent Builder routes in production.
 
 ## Key routes
 
@@ -74,3 +76,6 @@ NEXT_PUBLIC_ADMIN_MODE=false
 - Price fields are **DOUBLE PRECISION** end‑to‑end.
 - Override flows are logged to `investor_override_audit`.
 - Agent Builder audio/embedding/structured output nodes run in **preview** mode.
+
+## License
+- Proprietary. See `LICENSE.md` and `NOTICE.md`.
