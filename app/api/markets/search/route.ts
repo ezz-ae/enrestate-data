@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { buildExclusionSql } from "@/lib/inventory-policy"
+import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
 function normalizeValue(value: unknown): unknown {
   if (typeof value === "bigint") {
@@ -45,6 +46,18 @@ function normalizeValue(value: unknown): unknown {
  */
 
 export async function GET(request: Request) {
+  const { allowed, resetAt } = rateLimit(buildRateLimitKey(request, "markets-search"), {
+    limit: 120,
+    windowMs: 60_000,
+  })
+  if (!allowed) {
+    const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    )
+  }
+
   const { searchParams } = new URL(request.url)
   const q = searchParams.get("q")
   const city = searchParams.get("city")

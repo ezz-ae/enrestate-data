@@ -60,6 +60,11 @@ export const REQUIRED_RELATIONS: RelationContract[] = [
     ],
   },
   {
+    name: "investor_profiles_v1",
+    type: "BASE TABLE",
+    requiredColumns: ["risk_profile", "allowed_bands"],
+  },
+  {
     name: "system_healthcheck",
     type: "BASE TABLE",
     requiredColumns: ["checked_at", "passed"],

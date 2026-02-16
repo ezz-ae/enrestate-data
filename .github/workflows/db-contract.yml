@@ -1,0 +1,31 @@
+name: DB Contract
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  db-contract:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run DB contract tests
+        run: pnpm test -- tests/db-contract.test.ts

@@ -65,4 +65,56 @@ describeDb("database contract", () => {
       expect(found.has(fn)).toBe(true)
     }
   })
+
+  it("returns required columns for unranked investor function", async () => {
+    const rows = await prisma.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+      SELECT *
+      FROM agent_inventory_for_investor_v1('Conservative', 'Ready')
+      LIMIT 1
+    `)
+    expect(rows.length).toBeGreaterThan(0)
+    const keys = new Set(Object.keys(rows[0] ?? {}))
+    const required = [
+      "asset_id",
+      "score_0_100",
+      "safety_band",
+      "classification",
+      "roi_band",
+      "liquidity_band",
+      "timeline_risk_band",
+      "reason_codes",
+      "risk_flags",
+      "drivers",
+    ]
+    for (const key of required) {
+      expect(keys.has(key)).toBe(true)
+    }
+  })
+
+  it("returns required columns for ranked investor function", async () => {
+    const rows = await prisma.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+      SELECT *
+      FROM agent_ranked_for_investor_v1('Balanced', '1-2yr', 2000000, 'Dubai', '2BR', 'invest')
+      LIMIT 1
+    `)
+    expect(rows.length).toBeGreaterThan(0)
+    const keys = new Set(Object.keys(rows[0] ?? {}))
+    const required = [
+      "asset_id",
+      "score_0_100",
+      "safety_band",
+      "classification",
+      "roi_band",
+      "liquidity_band",
+      "timeline_risk_band",
+      "reason_codes",
+      "risk_flags",
+      "drivers",
+      "match_score",
+      "final_rank",
+    ]
+    for (const key of required) {
+      expect(keys.has(key)).toBe(true)
+    }
+  })
 })

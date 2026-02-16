@@ -77,5 +77,9 @@ NEXT_PUBLIC_ENABLE_AGENT_BUILDER=false
 - Override flows are logged to `investor_override_audit`.
 - Agent Builder audio/embedding/structured output nodes run in **preview** mode.
 
+## CI
+- DB contract tests run via `.github/workflows/db-contract.yml`.
+- Set `NEON_DATABASE_URL` as a GitHub Actions secret for the nightly run.
+
 ## License
 - Proprietary. See `LICENSE.md` and `NOTICE.md`.

@@ -7,6 +7,7 @@ import {
   rentalPricing,
   secondaryMarket,
 } from "@/lib/daas/services"
+import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -69,6 +70,18 @@ function coerceParams(params: Record<string, unknown>) {
 
 export async function POST(request: Request) {
   try {
+    const { allowed, resetAt } = rateLimit(buildRateLimitKey(request, "daas"), {
+      limit: 10,
+      windowMs: 60_000,
+    })
+    if (!allowed) {
+      const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment and try again." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      )
+    }
+
     const body = await request.json()
     const product = body?.product as Product
 
