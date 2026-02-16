@@ -196,7 +196,7 @@ function summarizeResults(
 
 export async function POST(request: Request) {
   try {
-    const { allowed, resetAt } = rateLimit(buildRateLimitKey(request, "chat"), {
+    const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "chat"), {
       limit: 30,
       windowMs: 60_000,
     })

@@ -1,3 +1,5 @@
+import { Redis } from "@upstash/redis"
+
 type RateLimitConfig = {
   limit: number
   windowMs: number
@@ -5,6 +7,12 @@ type RateLimitConfig = {
 
 type RateLimitEntry = {
   count: number
+  resetAt: number
+}
+
+type RateLimitResult = {
+  allowed: boolean
+  remaining: number
   resetAt: number
 }
 
@@ -17,6 +25,9 @@ const store: Map<string, RateLimitEntry> =
 if (!(globalThis as typeof globalThis & { [STORE_KEY]?: Map<string, RateLimitEntry> })[STORE_KEY]) {
   ;(globalThis as typeof globalThis & { [STORE_KEY]?: Map<string, RateLimitEntry> })[STORE_KEY] = store
 }
+
+const hasRedis = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+const redis = hasRedis ? Redis.fromEnv() : null
 
 export function getRequestIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")
@@ -31,7 +42,7 @@ export function buildRateLimitKey(request: Request, scope: string): string {
   return `${scope}:${getRequestIp(request)}`
 }
 
-export function rateLimit(key: string, config: RateLimitConfig) {
+function rateLimitInMemory(key: string, config: RateLimitConfig): RateLimitResult {
   const now = Date.now()
   const existing = store.get(key)
 
@@ -50,5 +61,29 @@ export function rateLimit(key: string, config: RateLimitConfig) {
     allowed,
     remaining: Math.max(0, config.limit - nextCount),
     resetAt: existing.resetAt,
+  }
+}
+
+export async function rateLimit(key: string, config: RateLimitConfig): Promise<RateLimitResult> {
+  if (!redis) {
+    return rateLimitInMemory(key, config)
+  }
+
+  try {
+    const now = Date.now()
+    const windowBucket = Math.floor(now / config.windowMs)
+    const windowKey = `${key}:${windowBucket}`
+    const count = await redis.incr(windowKey)
+    if (count === 1) {
+      await redis.expire(windowKey, Math.ceil(config.windowMs / 1000))
+    }
+    const resetAt = (windowBucket + 1) * config.windowMs
+    return {
+      allowed: count <= config.limit,
+      remaining: Math.max(0, config.limit - count),
+      resetAt,
+    }
+  } catch {
+    return rateLimitInMemory(key, config)
   }
 }

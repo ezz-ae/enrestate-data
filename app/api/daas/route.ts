@@ -70,7 +70,7 @@ function coerceParams(params: Record<string, unknown>) {
 
 export async function POST(request: Request) {
   try {
-    const { allowed, resetAt } = rateLimit(buildRateLimitKey(request, "daas"), {
+    const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "daas"), {
       limit: 10,
       windowMs: 60_000,
     })

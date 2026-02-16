@@ -38,6 +38,8 @@ NEON_AUTH_COOKIE_SECRET=your-secret-at-least-32-characters-long
 NEON_AUTH_ADMIN_EMAILS=admin@entrestate.com,ops@entrestate.com
 NEXT_PUBLIC_ADMIN_MODE=false
 NEXT_PUBLIC_ENABLE_AGENT_BUILDER=false
+UPSTASH_REDIS_REST_URL=https://your-upstash-url
+UPSTASH_REDIS_REST_TOKEN=your-upstash-token
 ```
 
 - `DATABASE_URL` and `DATABASE_URL_UNPOOLED` are required for Neon-backed features.
@@ -45,6 +47,7 @@ NEXT_PUBLIC_ENABLE_AGENT_BUILDER=false
 - `NEON_AUTH_ADMIN_EMAILS` is optional for server-side admin gating.
 - `NEXT_PUBLIC_ADMIN_MODE=true` enables override controls on Market Score and Agent Runtime (non-production only).
 - `NEXT_PUBLIC_ENABLE_AGENT_BUILDER=true` enables Agent Builder routes in production.
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` enable shared rate limiting (optional but recommended).
 
 ## Key routes
 

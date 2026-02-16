@@ -46,7 +46,7 @@ function normalizeValue(value: unknown): unknown {
  */
 
 export async function GET(request: Request) {
-  const { allowed, resetAt } = rateLimit(buildRateLimitKey(request, "markets-search"), {
+  const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "markets-search"), {
     limit: 120,
     windowMs: 60_000,
   })
