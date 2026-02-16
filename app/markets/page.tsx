@@ -1,7 +1,6 @@
 "use client"
 
-import React from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import { ExplorerChat } from "@/components/explorer-chat"
@@ -376,7 +375,7 @@ const laneOptions = [
   },
 ]
 
-export default function MarketsPage() {
+function MarketsContent() {
   const [query, setQuery] = useState("")
   const [activeScript, setActiveScript] = useState<{ cat: string; script: Script } | null>(null)
   const [inputValues, setInputValues] = useState<Record<string, string>>({})
@@ -1404,5 +1403,33 @@ export default function MarketsPage() {
 
       <ExplorerChat />
     </main>
+  )
+}
+
+export default function MarketsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main id="main-content">
+          <Navbar />
+          <div className="pt-24 pb-20 md:pt-32 md:pb-32">
+            <div className="container mx-auto px-6">
+              <div className="max-w-2xl">
+                <p className="text-xs font-medium uppercase tracking-wider text-accent mb-3">Explorer</p>
+                <h1 className="text-3xl md:text-5xl font-serif text-foreground leading-tight text-balance">
+                  Markets
+                </h1>
+                <p className="mt-4 text-base text-muted-foreground leading-relaxed">
+                  Loading the explorer workspace…
+                </p>
+              </div>
+            </div>
+          </div>
+          <Footer />
+        </main>
+      }
+    >
+      <MarketsContent />
+    </Suspense>
   )
 }

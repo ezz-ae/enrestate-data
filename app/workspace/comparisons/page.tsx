@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { Navbar } from "@/components/navbar"
 import { Footer } from "@/components/footer"
 import Link from "next/link"
@@ -16,7 +16,7 @@ type AreaComparison = {
   conservativeReadyPool: number
 }
 
-export default function ComparisonsPage() {
+function ComparisonsContent() {
   const [summary, setSummary] = useState<MarketScoreSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [left, setLeft] = useState("")
@@ -252,5 +252,33 @@ export default function ComparisonsPage() {
       </div>
       <Footer />
     </main>
+  )
+}
+
+export default function ComparisonsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main id="main-content">
+          <Navbar />
+          <div className="pt-28 pb-20 md:pt-36 md:pb-32">
+            <div className="container mx-auto px-6">
+              <div className="max-w-2xl mb-12">
+                <p className="text-xs font-medium uppercase tracking-wider text-accent mb-3">Workspace</p>
+                <h1 className="text-3xl md:text-5xl font-serif text-foreground leading-tight text-balance">
+                  Comparisons
+                </h1>
+                <p className="mt-4 text-base text-muted-foreground leading-relaxed">
+                  Loading comparison tools…
+                </p>
+              </div>
+            </div>
+          </div>
+          <Footer />
+        </main>
+      }
+    >
+      <ComparisonsContent />
+    </Suspense>
   )
 }
