@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { getPublicErrorMessage, getRequestId } from "@/lib/api-errors"
+import { withStatementTimeout } from "@/lib/db-guardrails"
 import { buildExclusionSql } from "@/lib/inventory-policy"
 import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
@@ -60,6 +61,7 @@ function normalizeValue(value: unknown): unknown {
  */
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request)
   try {
     const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "markets"), {
       limit: 120,
@@ -68,7 +70,7 @@ export async function GET(request: Request) {
     if (!allowed) {
       const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
       return NextResponse.json(
-        { error: "Too many requests. Please wait a moment and try again." },
+        { error: "Too many requests. Please wait a moment and try again.", requestId },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       )
     }
@@ -77,7 +79,7 @@ export async function GET(request: Request) {
     const rawParams = Object.fromEntries(searchParams.entries())
     const parsed = marketsQuerySchema.safeParse(rawParams)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid query parameters." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid query parameters.", requestId }, { status: 400 })
     }
     const {
       city,
@@ -145,30 +147,34 @@ export async function GET(request: Request) {
           ? Prisma.sql`ORDER BY safety_band ASC NULLS LAST`
           : Prisma.sql`ORDER BY score_0_100 DESC NULLS LAST`
 
-    const rows = await prisma.$queryRaw<any[]>(Prisma.sql`
-      SELECT
-        asset_id::text AS asset_id,
-        name,
-        developer,
-        city,
-        area,
-        status_band,
-        price_aed::double precision AS price_aed,
-        beds,
-        score_0_100::double precision AS score_0_100,
-        safety_band,
-        classification
-      FROM agent_inventory_view_v1
-      ${whereClause}
-      ${orderBy}
-      LIMIT ${effectiveLimit} OFFSET ${effectiveOffset}
-    `)
+    const { rows, totals } = await withStatementTimeout(async (tx) => {
+      const rows = await tx.$queryRaw<any[]>(Prisma.sql`
+        SELECT
+          asset_id::text AS asset_id,
+          name,
+          developer,
+          city,
+          area,
+          status_band,
+          price_aed::double precision AS price_aed,
+          beds,
+          score_0_100::double precision AS score_0_100,
+          safety_band,
+          classification
+        FROM agent_inventory_view_v1
+        ${whereClause}
+        ${orderBy}
+        LIMIT ${effectiveLimit} OFFSET ${effectiveOffset}
+      `)
 
-    const totals = await prisma.$queryRaw<{ count: number | bigint }[]>(Prisma.sql`
-      SELECT COUNT(*)::int AS count
-      FROM agent_inventory_view_v1
-      ${whereClause}
-    `)
+      const totals = await tx.$queryRaw<{ count: number | bigint }[]>(Prisma.sql`
+        SELECT COUNT(*)::int AS count
+        FROM agent_inventory_view_v1
+        ${whereClause}
+      `)
+
+      return { rows, totals }
+    })
 
     const normalizedRows = rows.map((row) => normalizeValue(row))
     const totalCount = normalizeValue(totals[0]?.count ?? 0)
@@ -178,7 +184,10 @@ export async function GET(request: Request) {
       results: normalizedRows,
     })
   } catch (error) {
-    console.error("Markets query error:", error)
-    return NextResponse.json({ error: "Failed to load market inventory." }, { status: 500 })
+    console.error("Markets query error:", { requestId, error })
+    return NextResponse.json(
+      { error: getPublicErrorMessage(error, "Failed to load market inventory."), requestId },
+      { status: 500 },
+    )
   }
 }

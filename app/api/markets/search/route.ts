@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
-import { prisma } from "@/lib/prisma"
+import { getPublicErrorMessage, getRequestId } from "@/lib/api-errors"
+import { withStatementTimeout } from "@/lib/db-guardrails"
 import { buildExclusionSql } from "@/lib/inventory-policy"
 import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
@@ -46,104 +47,129 @@ function normalizeValue(value: unknown): unknown {
  */
 
 export async function GET(request: Request) {
-  const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "markets-search"), {
-    limit: 120,
-    windowMs: 60_000,
-  })
-  if (!allowed) {
-    const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
-    return NextResponse.json(
-      { error: "Too many requests. Please wait a moment and try again." },
-      { status: 429, headers: { "Retry-After": String(retryAfter) } },
-    )
-  }
+  const requestId = getRequestId(request)
+  try {
+    const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "markets-search"), {
+      limit: 120,
+      windowMs: 60_000,
+    })
+    if (!allowed) {
+      const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment and try again.", requestId },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      )
+    }
 
-  const { searchParams } = new URL(request.url)
-  const q = searchParams.get("q")
-  const city = searchParams.get("city")
-  const type = searchParams.get("type")
-  const beds = searchParams.get("beds")
-  const minPrice = searchParams.get("minPrice")
-  const maxPrice = searchParams.get("maxPrice")
-  const features = searchParams.get("features")?.split(",").filter(Boolean)
+    const { searchParams } = new URL(request.url)
+    const q = searchParams.get("q")
+    const city = searchParams.get("city")
+    const type = searchParams.get("type")
+    const beds = searchParams.get("beds")
+    const minPrice = searchParams.get("minPrice")
+    const maxPrice = searchParams.get("maxPrice")
+    const features = searchParams.get("features")?.split(",").filter(Boolean)
 
-  const clauses: Prisma.Sql[] = []
+    if (q && q.length > 120) {
+      return NextResponse.json(
+        { error: "Search query is too long. Keep it under 120 characters.", requestId },
+        { status: 400 },
+      )
+    }
 
-  if (q && q.trim().length > 1) {
-    const like = `%${q.trim()}%`
-    clauses.push(
-      Prisma.sql`(name ILIKE ${like} OR developer ILIKE ${like} OR area ILIKE ${like} OR city ILIKE ${like})`,
-    )
-  }
-  if (city) clauses.push(Prisma.sql`city ILIKE ${`%${city}%`}`)
-  if (beds) {
-    const normalized = beds.toLowerCase()
-    if (normalized.includes("studio")) {
-      clauses.push(Prisma.sql`
-        (
-          beds::text ILIKE ${"%Studio%"}
-          OR NULLIF(REGEXP_REPLACE(beds::text, '[^0-9.]', '', 'g'), '')::double precision = 0
-        )
-      `)
-    } else {
-      const bedsValue = Number.parseFloat(beds)
-      if (!Number.isNaN(bedsValue)) {
-        const bedsText = String(bedsValue)
+    if (features && features.length > 8) {
+      return NextResponse.json(
+        { error: "Too many feature filters. Limit to 8.", requestId },
+        { status: 400 },
+      )
+    }
+
+    const clauses: Prisma.Sql[] = []
+
+    if (q && q.trim().length > 1) {
+      const like = `%${q.trim()}%`
+      clauses.push(
+        Prisma.sql`(name ILIKE ${like} OR developer ILIKE ${like} OR area ILIKE ${like} OR city ILIKE ${like})`,
+      )
+    }
+    if (city) clauses.push(Prisma.sql`city ILIKE ${`%${city}%`}`)
+    if (beds) {
+      const normalized = beds.toLowerCase()
+      if (normalized.includes("studio")) {
         clauses.push(Prisma.sql`
           (
-            NULLIF(REGEXP_REPLACE(beds::text, '[^0-9.]', '', 'g'), '')::double precision = ${bedsValue}
-            OR beds::text ILIKE ${`%${bedsText}%`}
+            beds::text ILIKE ${"%Studio%"}
+            OR NULLIF(REGEXP_REPLACE(beds::text, '[^0-9.]', '', 'g'), '')::double precision = 0
           )
         `)
       } else {
-        clauses.push(Prisma.sql`beds::text ILIKE ${`%${beds}%`}`)
+        const bedsValue = Number.parseFloat(beds)
+        if (!Number.isNaN(bedsValue)) {
+          const bedsText = String(bedsValue)
+          clauses.push(Prisma.sql`
+            (
+              NULLIF(REGEXP_REPLACE(beds::text, '[^0-9.]', '', 'g'), '')::double precision = ${bedsValue}
+              OR beds::text ILIKE ${`%${bedsText}%`}
+            )
+          `)
+        } else {
+          clauses.push(Prisma.sql`beds::text ILIKE ${`%${beds}%`}`)
+        }
       }
     }
-  }
-  if (minPrice) {
-    const parsed = Number.parseFloat(minPrice)
-    if (!Number.isNaN(parsed)) {
-      clauses.push(Prisma.sql`price_aed >= ${parsed}`)
+    if (minPrice) {
+      const parsed = Number.parseFloat(minPrice)
+      if (!Number.isNaN(parsed)) {
+        clauses.push(Prisma.sql`price_aed >= ${parsed}`)
+      }
     }
-  }
-  if (maxPrice) {
-    const parsed = Number.parseFloat(maxPrice)
-    if (!Number.isNaN(parsed)) {
-      clauses.push(Prisma.sql`price_aed <= ${parsed}`)
+    if (maxPrice) {
+      const parsed = Number.parseFloat(maxPrice)
+      if (!Number.isNaN(parsed)) {
+        clauses.push(Prisma.sql`price_aed <= ${parsed}`)
+      }
     }
+
+    const exclusionSql = buildExclusionSql()
+    if (exclusionSql) clauses.push(exclusionSql)
+
+    const whereClause = clauses.length
+      ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`
+      : Prisma.empty
+
+    const rows = await withStatementTimeout((tx) =>
+      tx.$queryRaw<any[]>(Prisma.sql`
+        SELECT
+          asset_id::text AS asset_id,
+          name,
+          developer,
+          city,
+          area,
+          status_band,
+          price_aed,
+          beds,
+          score_0_100,
+          safety_band,
+          classification
+        FROM agent_inventory_view_v1
+        ${whereClause}
+        ORDER BY score_0_100 DESC NULLS LAST
+        LIMIT 20
+      `),
+    )
+
+    const normalizedRows = rows.map((row) => normalizeValue(row))
+
+    return NextResponse.json({
+      status: "ok",
+      params: { q, city, type, beds, minPrice, maxPrice, features },
+      results: normalizedRows,
+    })
+  } catch (error) {
+    console.error("Markets search error:", { requestId, error })
+    return NextResponse.json(
+      { error: getPublicErrorMessage(error, "Failed to run search."), requestId },
+      { status: 500 },
+    )
   }
-
-  const exclusionSql = buildExclusionSql()
-  if (exclusionSql) clauses.push(exclusionSql)
-
-  const whereClause = clauses.length
-    ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`
-    : Prisma.empty
-
-  const rows = await prisma.$queryRaw<any[]>(Prisma.sql`
-    SELECT
-      asset_id::text AS asset_id,
-      name,
-      developer,
-      city,
-      area,
-      status_band,
-      price_aed,
-      beds,
-      score_0_100,
-      safety_band,
-      classification
-    FROM agent_inventory_view_v1
-    ${whereClause}
-    ORDER BY score_0_100 DESC NULLS LAST
-    LIMIT 20
-  `)
-
-  const normalizedRows = rows.map((row) => normalizeValue(row))
-
-  return NextResponse.json({
-    status: "ok",
-    params: { q, city, type, beds, minPrice, maxPrice, features },
-    results: normalizedRows,
-  })
 }

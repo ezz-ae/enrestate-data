@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
-import { prisma } from "@/lib/prisma"
 import { buildExclusionSql } from "@/lib/inventory-policy"
+import { getPublicErrorMessage, getRequestId } from "@/lib/api-errors"
+import { withStatementTimeout } from "@/lib/db-guardrails"
 import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
 export const runtime = "nodejs"
@@ -195,6 +196,7 @@ function summarizeResults(
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request)
   try {
     const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "chat"), {
       limit: 30,
@@ -203,7 +205,7 @@ export async function POST(request: Request) {
     if (!allowed) {
       const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
       return NextResponse.json(
-        { error: "Too many requests. Please wait a moment and try again." },
+        { error: "Too many requests. Please wait a moment and try again.", requestId },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       )
     }
@@ -212,7 +214,14 @@ export async function POST(request: Request) {
     const { message, context } = body as { message?: string; context?: { city?: string; area?: string } }
 
     if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 })
+      return NextResponse.json({ error: "Message is required.", requestId }, { status: 400 })
+    }
+
+    if (message.length > 500) {
+      return NextResponse.json(
+        { error: "Message is too long. Keep it under 500 characters.", requestId },
+        { status: 400 },
+      )
     }
 
     const budgetMax = parseBudget(message)
@@ -281,31 +290,8 @@ export async function POST(request: Request) {
       ? Prisma.sql`WHERE ${Prisma.join(fullClauses, " AND ")}`
       : Prisma.empty
 
-    let rows = await prisma.$queryRaw<any[]>(Prisma.sql`
-      SELECT
-        asset_id::text AS asset_id,
-        name,
-        developer,
-        city,
-        area,
-        status_band,
-        price_aed::double precision AS price_aed,
-        beds,
-        score_0_100::double precision AS score_0_100,
-        safety_band,
-        classification
-      FROM agent_inventory_view_v1
-      ${whereClause}
-      ORDER BY score_0_100 DESC NULLS LAST
-      LIMIT 8
-    `)
-
-    let fallbackUsed = false
-    if (rows.length === 0 && bedsClause) {
-      const fallbackWhere = baseClauses.length
-        ? Prisma.sql`WHERE ${Prisma.join(baseClauses, " AND ")}`
-        : Prisma.empty
-      rows = await prisma.$queryRaw<any[]>(Prisma.sql`
+    const { rows, fallbackUsed } = await withStatementTimeout(async (tx) => {
+      let rows = await tx.$queryRaw<any[]>(Prisma.sql`
         SELECT
           asset_id::text AS asset_id,
           name,
@@ -319,12 +305,39 @@ export async function POST(request: Request) {
           safety_band,
           classification
         FROM agent_inventory_view_v1
-        ${fallbackWhere}
+        ${whereClause}
         ORDER BY score_0_100 DESC NULLS LAST
         LIMIT 8
       `)
-      fallbackUsed = rows.length > 0
-    }
+
+      let fallbackUsed = false
+      if (rows.length === 0 && bedsClause) {
+        const fallbackWhere = baseClauses.length
+          ? Prisma.sql`WHERE ${Prisma.join(baseClauses, " AND ")}`
+          : Prisma.empty
+        rows = await tx.$queryRaw<any[]>(Prisma.sql`
+          SELECT
+            asset_id::text AS asset_id,
+            name,
+            developer,
+            city,
+            area,
+            status_band,
+            price_aed::double precision AS price_aed,
+            beds,
+            score_0_100::double precision AS score_0_100,
+            safety_band,
+            classification
+          FROM agent_inventory_view_v1
+          ${fallbackWhere}
+          ORDER BY score_0_100 DESC NULLS LAST
+          LIMIT 8
+        `)
+        fallbackUsed = rows.length > 0
+      }
+
+      return { rows, fallbackUsed }
+    })
 
     const normalizedRows = rows.map((row) => normalizeValue(row)) as typeof rows
     const response = summarizeResults(normalizedRows, city, {
@@ -344,8 +357,11 @@ export async function POST(request: Request) {
       results: normalizedRows,
     })
   } catch (error) {
-    console.error("Chat query error:", error)
-    return NextResponse.json({ error: "Unable to run that query." }, { status: 500 })
+    console.error("Chat query error:", { requestId, error })
+    return NextResponse.json(
+      { error: getPublicErrorMessage(error, "Unable to run that query."), requestId },
+      { status: 500 },
+    )
   }
 }
 

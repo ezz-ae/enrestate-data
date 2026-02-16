@@ -1,12 +1,14 @@
 import "server-only"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { withStatementTimeout } from "@/lib/db-guardrails"
 import { shouldExcludeRow } from "@/lib/inventory-policy"
 
 type DataRow = Record<string, unknown>
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const QUERY_TIMEOUT_MS = 25000
+const STATEMENT_TIMEOUT_MS = 8000
 const DEFAULT_MAX_ROWS = 20000
 
 const NEON_TABLES = [
@@ -91,7 +93,7 @@ export async function getEntrestateRows(options?: EntrestateOptions): Promise<{
         const limitClause = Prisma.sql`LIMIT ${limit}`
         const query = Prisma.sql`SELECT * FROM ${Prisma.raw(candidate.name)} ${limitClause}`
         const rawRows = await withTimeout(
-          prisma.$queryRaw<DataRow[]>(query),
+          withStatementTimeout((tx) => tx.$queryRaw<DataRow[]>(query), STATEMENT_TIMEOUT_MS),
           QUERY_TIMEOUT_MS,
           `${candidate.label}:${limit}`,
         )

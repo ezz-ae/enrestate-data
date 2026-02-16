@@ -7,6 +7,7 @@ import {
   rentalPricing,
   secondaryMarket,
 } from "@/lib/daas/services"
+import { getPublicErrorMessage, getRequestId } from "@/lib/api-errors"
 import { buildRateLimitKey, rateLimit } from "@/lib/rate-limit"
 
 export const runtime = "nodejs"
@@ -69,6 +70,7 @@ function coerceParams(params: Record<string, unknown>) {
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request)
   try {
     const { allowed, resetAt } = await rateLimit(buildRateLimitKey(request, "daas"), {
       limit: 10,
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
     if (!allowed) {
       const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))
       return NextResponse.json(
-        { error: "Too many requests. Please wait a moment and try again." },
+        { error: "Too many requests. Please wait a moment and try again.", requestId },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       )
     }
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
     const product = body?.product as Product
 
     if (!product || !(product in PRODUCT_MAP)) {
-      return NextResponse.json({ error: "Unknown DaaS product." }, { status: 400 })
+      return NextResponse.json({ error: "Unknown DaaS product.", requestId }, { status: 400 })
     }
 
     const params = coerceParams(body?.params ?? {})
@@ -98,9 +100,9 @@ export async function POST(request: Request) {
       result,
     })
   } catch (error) {
-    console.error("DaaS request failed:", error)
+    console.error("DaaS request failed:", { requestId, error })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to run DaaS service." },
+      { error: getPublicErrorMessage(error, "Service unavailable."), requestId },
       { status: 500 },
     )
   }
