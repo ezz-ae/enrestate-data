@@ -1,0 +1,51 @@
+import type React from "react"
+import type { Metadata, Viewport } from "next"
+import { Space_Grotesk, Fraunces, JetBrains_Mono } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
+import { BeamsPageBackground } from "@/components/beams-page-background"
+import "./globals.css"
+
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", weight: ["400", "500", "600", "700"] })
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", weight: ["400", "500", "600", "700"] })
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" })
+
+export const metadata: Metadata = {
+  title: "Entrestate - Real Estate Market Technology",
+  description:
+    "A professional workspace for studying markets, understanding price behavior, and operating decisions through data, analysis, and agents.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#11161d" },
+    { media: "(prefers-color-scheme: dark)", color: "#11161d" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+}
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning className="bg-background">
+      <body className={`font-sans antialiased ${spaceGrotesk.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:outline-none"
+        >
+          Skip to main content
+        </a>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          <BeamsPageBackground />
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}

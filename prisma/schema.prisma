@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// Partial schema for Entrestate Intelligence Engine tables.
+// Raw SQL queries are used for dashboard analysis, so only key fields are mapped here.
+model EntrestateMaster {
+  project_id         Int      @id @map("project_id")
+  name               String?  @map("name")
+  city_clean         String?  @map("city_clean")
+  area               String?  @map("area")
+  developer_canonical String? @map("developer_canonical")
+  final_price_from   Float?   @map("final_price_from")
+  final_price_to     Float?   @map("final_price_to")
+  market_timing      String?  @map("market_timing")
+  derived_risk_class String?  @map("derived_risk_class")
+  data_confidence    String?  @map("data_confidence")
+  final_status       String?  @map("final_status")
+  investment_score   Float?   @map("investment_score")
+
+  @@map("entrestate_master")
+}
+
+enum AgentRole {
+  lead_qualifier
+  buyer_matcher
+  investor_advisor
+}
+
+enum AgentStatus {
+  draft
+  active
+  archived
+}
+
+enum OutputChannel {
+  whatsapp
+  call_script
+  investor_memo
+  crm_summary
+}
+
+enum CompanyType {
+  broker
+  developer
+  investment
+}
+
+enum RunStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum TeamRole {
+  owner
+  admin
+  editor
+  viewer
+}
+
+enum ConnectorType {
+  listings
+  projects
+  market_intel
+  crm
+}
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  members   TeamMember[]
+  agents    AgentDefinition[]
+  credentials ConnectorCredential[]
+  knowledgeSources KnowledgeSource[]
+}
+
+model User {
+  id        String       @id @default(cuid())
+  email     String?      @unique
+  name      String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  memberships TeamMember[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      TeamRole @default(editor)
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([teamId])
+  @@index([userId])
+}
+
+model AgentTemplate {
+  id               String    @id @default(cuid())
+  name             String
+  description      String
+  role             AgentRole
+  defaultDefinition Json
+  sampleConversation Json
+  sampleOutput     Json
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model AgentDefinition {
+  id         String      @id @default(cuid())
+  teamId     String
+  name       String
+  role       AgentRole
+  market     String
+  companyType CompanyType
+  inputs     Json
+  rules      Json
+  outputs    Json
+  connectors Json
+  status     AgentStatus @default(draft)
+  version    Int         @default(1)
+  shareId    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  team       Team        @relation(fields: [teamId], references: [id])
+  versions   AgentVersion[]
+  runs       AgentRun[]
+  ruleSets   RuleSet[]
+
+  @@index([teamId])
+}
+
+model AgentVersion {
+  id         String   @id @default(cuid())
+  agentId    String
+  version    Int
+  definition Json
+  createdAt  DateTime @default(now())
+  createdBy  String?
+
+  agent      AgentDefinition @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
+}
+
+model AgentRun {
+  id         String   @id @default(cuid())
+  agentId    String
+  version    Int
+  status     RunStatus
+  input      Json
+  output     Json?
+  error      String?
+  createdAt  DateTime @default(now())
+  completedAt DateTime?
+
+  agent      AgentDefinition @relation(fields: [agentId], references: [id])
+  messages   AgentMessage[]
+
+  @@index([agentId])
+}
+
+model AgentMessage {
+  id        String   @id @default(cuid())
+  runId     String
+  role      String
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  run       AgentRun @relation(fields: [runId], references: [id])
+
+  @@index([runId])
+}
+
+model Connector {
+  id          String        @id @default(cuid())
+  name        String
+  type        ConnectorType
+  description String
+  configSchema Json?
+  enabled     Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model ConnectorCredential {
+  id         String   @id @default(cuid())
+  teamId     String
+  connectorId String
+  status     String
+  config     Json
+  createdAt  DateTime @default(now())
+
+  team       Team     @relation(fields: [teamId], references: [id])
+
+  @@index([teamId])
+  @@index([connectorId])
+}
+
+model KnowledgeSource {
+  id         String   @id @default(cuid())
+  teamId     String
+  name       String
+  type       String
+  config     Json
+  createdAt  DateTime @default(now())
+
+  team       Team     @relation(fields: [teamId], references: [id])
+
+  @@index([teamId])
+}
+
+model RuleSet {
+  id         String   @id @default(cuid())
+  agentId    String
+  strictMode Boolean  @default(true)
+  toggles    Json
+  createdAt  DateTime @default(now())
+
+  agent      AgentDefinition @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
+}

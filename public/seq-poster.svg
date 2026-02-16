@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0070F3" />
+      <stop offset="100%" stop-color="#00A67E" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" rx="54" fill="#0A0A0A" />
+  <rect x="60" y="54" width="1080" height="567" rx="40" fill="url(#grad)" opacity="0.12" />
+  <rect x="96" y="81" width="1008" height="513" rx="33" fill="none" stroke="#0070F3" stroke-opacity="0.25" stroke-width="2" />
+  <text x="120" y="324" fill="#EDEDED" font-family="Inter, Arial, sans-serif" font-size="81" font-weight="600">Entrestate Studio</text>
+  <text x="120" y="418" fill="#A1A1A1" font-family="Inter, Arial, sans-serif" font-size="40">Cinematic Marketing Sequences</text>
+  <circle cx="983" cy="189" r="54" fill="#0070F3" fill-opacity="0.4" />
+  <circle cx="900" cy="486" r="33" fill="#00A67E" fill-opacity="0.35" />
+</svg>
