@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
+import { z } from "zod"
 import { prisma } from "@/lib/prisma"
+import { buildExclusionSql } from "@/lib/inventory-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
+const marketsQuerySchema = z.object({
+  city: z.string().trim().min(1).max(80).optional(),
+  area: z.string().trim().min(1).max(120).optional(),
+  developer: z.string().trim().min(1).max(120).optional(),
+  beds: z.string().trim().min(1).max(20).optional(),
+  status_band: z.string().trim().min(1).max(40).optional(),
+  minPrice: z.coerce.number().finite().min(0).optional(),
+  maxPrice: z.coerce.number().finite().min(0).optional(),
+  sort: z.enum(["score", "price", "safety"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).max(10000).optional(),
+})
 
 function normalizeValue(value: unknown): unknown {
   if (typeof value === "bigint") {
@@ -48,16 +61,26 @@ function normalizeValue(value: unknown): unknown {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const city = searchParams.get("city")
-    const area = searchParams.get("area")
-    const developer = searchParams.get("developer")
-    const beds = searchParams.get("beds")
-    const statusBand = searchParams.get("status_band")
-    const minPrice = searchParams.get("minPrice")
-    const maxPrice = searchParams.get("maxPrice")
-    const sort = searchParams.get("sort") || "score"
-    const limit = Number(searchParams.get("limit") || "12")
-    const offset = Number(searchParams.get("offset") || "0")
+    const rawParams = Object.fromEntries(searchParams.entries())
+    const parsed = marketsQuerySchema.safeParse(rawParams)
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid query parameters." }, { status: 400 })
+    }
+    const {
+      city,
+      area,
+      developer,
+      beds,
+      status_band: statusBand,
+      minPrice,
+      maxPrice,
+      sort,
+      limit,
+      offset,
+    } = parsed.data
+    const effectiveSort = sort ?? "score"
+    const effectiveLimit = limit ?? 12
+    const effectiveOffset = offset ?? 0
 
     const clauses: Prisma.Sql[] = []
     if (city) clauses.push(Prisma.sql`city ILIKE ${`%${city}%`}`)
@@ -88,39 +111,24 @@ export async function GET(request: Request) {
       }
     }
     if (statusBand) clauses.push(Prisma.sql`status_band::text = ${statusBand}::text`)
-    if (minPrice) {
-      const parsed = Number.parseFloat(minPrice)
-      if (!Number.isNaN(parsed)) {
-        clauses.push(Prisma.sql`price_aed >= ${parsed}`)
-      }
+    if (typeof minPrice === "number") {
+      clauses.push(Prisma.sql`price_aed >= ${minPrice}`)
     }
-    if (maxPrice) {
-      const parsed = Number.parseFloat(maxPrice)
-      if (!Number.isNaN(parsed)) {
-        clauses.push(Prisma.sql`price_aed <= ${parsed}`)
-      }
+    if (typeof maxPrice === "number") {
+      clauses.push(Prisma.sql`price_aed <= ${maxPrice}`)
     }
 
-    EXCLUDED_KEYWORDS.forEach((keyword) => {
-      const pattern = `%${keyword}%`
-      clauses.push(Prisma.sql`
-        NOT (
-          COALESCE(name, '') ILIKE ${pattern}
-          OR COALESCE(developer, '') ILIKE ${pattern}
-          OR COALESCE(area, '') ILIKE ${pattern}
-          OR COALESCE(city, '') ILIKE ${pattern}
-        )
-      `)
-    })
+    const exclusionSql = buildExclusionSql()
+    if (exclusionSql) clauses.push(exclusionSql)
 
     const whereClause = clauses.length
       ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`
       : Prisma.empty
 
     const orderBy =
-      sort === "price"
+      effectiveSort === "price"
         ? Prisma.sql`ORDER BY price_aed ASC NULLS LAST`
-        : sort === "safety"
+        : effectiveSort === "safety"
           ? Prisma.sql`ORDER BY safety_band ASC NULLS LAST`
           : Prisma.sql`ORDER BY score_0_100 DESC NULLS LAST`
 
@@ -140,7 +148,7 @@ export async function GET(request: Request) {
       FROM agent_inventory_view_v1
       ${whereClause}
       ${orderBy}
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT ${effectiveLimit} OFFSET ${effectiveOffset}
     `)
 
     const totals = await prisma.$queryRaw<{ count: number | bigint }[]>(Prisma.sql`

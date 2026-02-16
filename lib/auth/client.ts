@@ -6,7 +6,8 @@ export const authClient = createAuthClient()
 
 export function useIsAdmin() {
   const session = authClient.useSession()
-  const isAdmin =
-    process.env.NEXT_PUBLIC_ADMIN_MODE === "true" || session.data?.user?.role === "admin"
+  const adminModeEnabled =
+    process.env.NEXT_PUBLIC_ADMIN_MODE === "true" && process.env.NODE_ENV !== "production"
+  const isAdmin = adminModeEnabled || session.data?.user?.role === "admin"
   return { ...session, isAdmin }
 }

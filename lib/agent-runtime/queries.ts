@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client"
 import type { AgentRuntimeRunInput, OverrideFlags } from "@/lib/agent-runtime/types"
-
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
+import { buildExclusionSql } from "@/lib/inventory-policy"
 
 function buildRuntimeColumns(options: {
   ranked: boolean
@@ -95,21 +94,6 @@ function buildUnrankedOverrideSelect(whereSql: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`SELECT ${columns} FROM agent_inventory_view_v1 WHERE ${whereSql}`
 }
 
-function buildExclusionSql(): Prisma.Sql | null {
-  if (EXCLUDED_KEYWORDS.length === 0) return null
-  const clauses = EXCLUDED_KEYWORDS.map((keyword) => {
-    const pattern = `%${keyword}%`
-    return Prisma.sql`
-      NOT (
-        COALESCE(name, '') ILIKE ${pattern}
-        OR COALESCE(developer, '') ILIKE ${pattern}
-        OR COALESCE(area, '') ILIKE ${pattern}
-        OR COALESCE(city, '') ILIKE ${pattern}
-      )
-    `
-  })
-  return Prisma.sql`${Prisma.join(clauses, " AND ")}`
-}
 
 export function buildRunQuery(input: AgentRuntimeRunInput): Prisma.Sql {
   const overrideWhere = input.overrideActive ? buildOverrideWhere(input.overrideFlags) : null

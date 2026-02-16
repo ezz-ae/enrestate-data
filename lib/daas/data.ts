@@ -1,14 +1,13 @@
 import "server-only"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { shouldExcludeRow } from "@/lib/inventory-policy"
 
 type DataRow = Record<string, unknown>
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const QUERY_TIMEOUT_MS = 25000
 const DEFAULT_MAX_ROWS = 20000
-
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
 
 const NEON_TABLES = [
   { name: "agent_inventory_view_v1", label: "agent_inventory_view_v1" },
@@ -168,20 +167,4 @@ function normalizeValue(value: unknown): unknown {
   }
 
   return value
-}
-
-function shouldExcludeRow(row: DataRow): boolean {
-  return Object.values(row).some((value) => containsExcludedKeyword(value))
-}
-
-function containsExcludedKeyword(value: unknown): boolean {
-  if (value === null || value === undefined) return false
-  if (typeof value === "string") {
-    const lower = value.toLowerCase()
-    return EXCLUDED_KEYWORDS.some((keyword) => lower.includes(keyword))
-  }
-  if (Array.isArray(value)) {
-    return value.some((entry) => containsExcludedKeyword(entry))
-  }
-  return false
 }

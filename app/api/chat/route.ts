@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { buildExclusionSql } from "@/lib/inventory-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -34,8 +35,6 @@ const DEFAULT_SUGGESTIONS = [
   "Best areas for 1-2 year delivery",
   "Projects in Abu Dhabi under AED 2M",
 ]
-
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
 
 function normalizeValue(value: unknown): unknown {
   if (typeof value === "bigint") {
@@ -261,17 +260,8 @@ export async function POST(request: Request) {
       baseClauses.push(Prisma.sql`status_band::text IN (${Prisma.join(statusBandSql)})`)
     }
 
-    EXCLUDED_KEYWORDS.forEach((keyword) => {
-      const pattern = `%${keyword}%`
-      baseClauses.push(Prisma.sql`
-        NOT (
-          COALESCE(name, '') ILIKE ${pattern}
-          OR COALESCE(developer, '') ILIKE ${pattern}
-          OR COALESCE(area, '') ILIKE ${pattern}
-          OR COALESCE(city, '') ILIKE ${pattern}
-        )
-      `)
-    })
+    const exclusionSql = buildExclusionSql()
+    if (exclusionSql) baseClauses.push(exclusionSql)
 
     const fullClauses = bedsClause ? [...baseClauses, bedsClause] : baseClauses
     const whereClause = fullClauses.length

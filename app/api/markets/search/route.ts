@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
-
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
+import { buildExclusionSql } from "@/lib/inventory-policy"
 
 function normalizeValue(value: unknown): unknown {
   if (typeof value === "bigint") {
@@ -101,17 +100,8 @@ export async function GET(request: Request) {
     }
   }
 
-  EXCLUDED_KEYWORDS.forEach((keyword) => {
-    const pattern = `%${keyword}%`
-    clauses.push(Prisma.sql`
-      NOT (
-        COALESCE(name, '') ILIKE ${pattern}
-        OR COALESCE(developer, '') ILIKE ${pattern}
-        OR COALESCE(area, '') ILIKE ${pattern}
-        OR COALESCE(city, '') ILIKE ${pattern}
-      )
-    `)
-  })
+  const exclusionSql = buildExclusionSql()
+  if (exclusionSql) clauses.push(exclusionSql)
 
   const whereClause = clauses.length
     ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`

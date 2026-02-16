@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client"
 import type { MarketScoreFilters, OverrideFlags, RoutingParams } from "@/lib/market-score/types"
+import { buildExclusionSql } from "@/lib/inventory-policy"
 
 const SAFE_BANDS_ORDER = ["Institutional Safe", "Capital Safe", "Opportunistic", "Speculative"]
-const EXCLUDED_KEYWORDS = ["lelwa", "mashroi"]
 
 export function getSafetyBandOrder(band: string) {
   const index = SAFE_BANDS_ORDER.indexOf(band)
@@ -32,17 +32,8 @@ export function buildFilterSql(filters: MarketScoreFilters, options?: { includeP
     clauses.push(Prisma.sql`safety_band IN (${toSqlList(filters.safetyBands)})`)
   }
 
-  EXCLUDED_KEYWORDS.forEach((keyword) => {
-    const pattern = `%${keyword}%`
-    clauses.push(Prisma.sql`
-      NOT (
-        COALESCE(name, '') ILIKE ${pattern}
-        OR COALESCE(developer, '') ILIKE ${pattern}
-        OR COALESCE(area, '') ILIKE ${pattern}
-        OR COALESCE(city, '') ILIKE ${pattern}
-      )
-    `)
-  })
+  const exclusionSql = buildExclusionSql()
+  if (exclusionSql) clauses.push(exclusionSql)
 
   if (clauses.length === 0) return null
   return Prisma.sql`${Prisma.join(clauses, " AND ")}`

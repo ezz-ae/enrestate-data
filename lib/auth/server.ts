@@ -7,12 +7,19 @@ const adminEmails = (process.env.NEON_AUTH_ADMIN_EMAILS ?? "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean)
+const adminModeRequested = process.env.NEXT_PUBLIC_ADMIN_MODE === "true"
+const adminModeEnabled = adminModeRequested && process.env.NODE_ENV !== "production"
+let adminModeWarned = false
 
 export const authEnabled = Boolean(baseUrl && cookieSecret)
 const invalidSecret = authEnabled && cookieSecret && cookieSecret.length < 32
 
 if (invalidSecret) {
   console.warn("Neon Auth disabled: NEON_AUTH_COOKIE_SECRET must be at least 32 characters.")
+}
+
+if (adminModeRequested && !adminModeEnabled) {
+  console.warn("Admin mode ignored in production. Disable NEXT_PUBLIC_ADMIN_MODE for production.")
 }
 
 export const auth = authEnabled && !invalidSecret
@@ -45,7 +52,11 @@ export async function getSessionUserId(): Promise<string> {
 }
 
 export async function isAdminUser(): Promise<boolean> {
-  if (process.env.NEXT_PUBLIC_ADMIN_MODE === "true") {
+  if (adminModeEnabled) {
+    if (!adminModeWarned) {
+      console.warn("Admin mode bypass is enabled for this environment.")
+      adminModeWarned = true
+    }
     return true
   }
 
