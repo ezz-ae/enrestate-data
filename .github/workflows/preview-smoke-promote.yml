@@ -1,0 +1,87 @@
+name: Deploy Preview Smoke Promote
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy_preview:
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build with Vercel
+        run: npx vercel build --token ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy preview
+        id: deploy
+        run: |
+          url=$(npx vercel deploy --prebuilt \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --scope ${{ secrets.VERCEL_ORG_ID }} \
+            --confirm)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    needs: deploy_preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Wait for deployment
+        run: |
+          base_url="https://${{ needs.deploy_preview.outputs.url }}"
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "$base_url/api/markets?limit=1")
+            if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Deployment not ready" >&2
+          exit 1
+
+      - name: Run smoke suite
+        env:
+          BASE_URL: https://${{ needs.deploy_preview.outputs.url }}
+          BYPASS_HEADER: x-vercel-protection-bypass
+          BYPASS_TOKEN: ${{ secrets.VERCEL_PROTECTION_BYPASS }}
+        run: ./scripts/smoke.sh
+
+  promote:
+    needs: smoke
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Promote to production
+        run: npx vercel promote "https://${{ needs.deploy_preview.outputs.url }}" \
+          --token ${{ secrets.VERCEL_TOKEN }} \
+          --scope ${{ secrets.VERCEL_TEAM_ID || secrets.VERCEL_ORG_ID }}

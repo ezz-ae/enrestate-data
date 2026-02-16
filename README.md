@@ -83,6 +83,7 @@ UPSTASH_REDIS_REST_TOKEN=your-upstash-token
 ## CI
 - DB contract tests run via `.github/workflows/db-contract.yml`.
 - Set `NEON_DATABASE_URL` as a GitHub Actions secret for the nightly run.
+- See `FINALIZATION.md` for the release checklist and `docs/smoke-finalization-guide.md` for the hardened preview smoke and promotion workflow that protects production SSO.
 
 ## License
 - Proprietary. See `LICENSE.md` and `NOTICE.md`.
